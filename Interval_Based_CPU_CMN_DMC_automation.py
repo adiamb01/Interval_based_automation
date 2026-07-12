@@ -410,6 +410,26 @@ FIELDS = [
     "dmc_slc_61",
     "dmc_slc_62",
     "dmc_slc_63",
+    "dmc_chi_reqif_transfer",
+    "dmc_chi_req_xmit_rd_retries",
+    "dmc_chi_req_xmit_wr_retries",
+    "dmc_chi_reqif_op_writenosnpfull",
+    "dmc_chi_reqif_op_writenosnpfull_ptl_pcmosep",
+    "dmc_chi_reqif_op_writenosnpptl",
+    "dmc_chi_reqif_op_writezero",
+    "dmc_chi_reqif_op_readnosnpsep",
+    "dmc_chi_reqif_op_readnosnp",
+    "dmc_chi_reqif_rd_ops_total",
+    "dmc_chi_reqif_wr_ops_total",
+    "dmc_chi_reqif_rdwr_ops_total",
+    "dmc_chi_rd_retry_pct",
+    "dmc_chi_wr_retry_pct",
+    "dmc_chi_retry_pct",
+    "dmc_chi_rd_pct",
+    "dmc_chi_wr_pct",
+    "dmc_chi_rd_without_retry_pct",
+    "dmc_chi_wr_without_retry_pct",
+    "dmc_chi_rdwr_without_retry_pct",
     "dmc_phx_cpu_fe_cycles",
     "dmc_phx_cpu_fe_retry",
     "dmc_phx_remote_fe_cycles",
@@ -473,6 +493,45 @@ DMC_PHX_BE_PORT_BUSY = dict(event="0x160", filter="0x0", filter2="0x0", filter3=
 
 def dmc_phx_event_string(port, cfg):
     return f"arm_cspmu_mc_{port}/config={cfg['event']}/"
+
+
+def dmc_phx_filtered_event_string(port, cfg):
+    parts = [f"event={cfg['event']}"]
+    if "filter" in cfg:
+        parts.append(f"filter={cfg['filter']}")
+    if "filter2" in cfg:
+        parts.append(f"filter2={cfg['filter2']}")
+    if "impdef" in cfg:
+        parts.append(f"impdef={cfg['impdef']}")
+    return f"arm_cspmu_mc_{port}/" + ",".join(parts) + "/"
+
+
+# DMC Phoenix FE CHI request-interface events used for read/write/retry mix.
+# Event codes follow the DMC Phoenix FE event list:
+#   CHI_REQIF_OP_*        -> 0x20
+#   CHI_REQIF_TRANSFER    -> 0x40
+#   CHI_REQ_XMIT_*RETRIES -> 0x50
+# Payload bit masks follow PMU_CMD_TYPE_PAYLOAD and PMU_RETRY_REASON_PAYLOAD.
+DMC_PHX_CHI_REQ_EVENTS = [
+    ("dmc_chi_reqif_transfer", dict(event="0x40", filter="0x0")),
+    ("dmc_chi_req_xmit_rd_retries", dict(event="0x50", filter="0x0", filter2="0x4", impdef="0x4")),
+    ("dmc_chi_req_xmit_wr_retries", dict(event="0x50", filter="0x0", filter2="0x2", impdef="0x2")),
+    ("dmc_chi_reqif_op_writenosnpfull", dict(event="0x20", filter="0x0", filter2="0x8", impdef="0x8")),
+    ("dmc_chi_reqif_op_writenosnpfull_ptl_pcmosep", dict(event="0x20", filter="0x0", filter2="0x100", impdef="0x100")),
+    ("dmc_chi_reqif_op_writenosnpptl", dict(event="0x20", filter="0x0", filter2="0x4", impdef="0x4")),
+    ("dmc_chi_reqif_op_writezero", dict(event="0x20", filter="0x0", filter2="0x80", impdef="0x80")),
+    ("dmc_chi_reqif_op_readnosnpsep", dict(event="0x20", filter="0x0", filter2="0x2", impdef="0x2")),
+    ("dmc_chi_reqif_op_readnosnp", dict(event="0x20", filter="0x0", filter2="0x1", impdef="0x1")),
+]
+
+
+def build_dmc_phx_chi_req_events(ports=None):
+    ports = DMC_PHX_MC_PORTS if ports is None else ports
+    events = []
+    for metric_name, cfg in DMC_PHX_CHI_REQ_EVENTS:
+        for p in ports:
+            events.append((metric_name, dmc_phx_filtered_event_string(p, cfg)))
+    return events
 
 
 def build_dmc_phx_all_events(metric_name, cfg, ports=None):
@@ -972,6 +1031,30 @@ def add_derived(rows, bw_mem, benchmark_score=None):
             + r["ccg_writedata_bw_GBps"]
         )
 
+        dmc_chi_rd_ops = r.get("dmc_chi_reqif_op_readnosnpsep", 0) + r.get("dmc_chi_reqif_op_readnosnp", 0)
+        dmc_chi_wr_ops = (
+            r.get("dmc_chi_reqif_op_writenosnpfull", 0)
+            + r.get("dmc_chi_reqif_op_writenosnpfull_ptl_pcmosep", 0)
+            + r.get("dmc_chi_reqif_op_writenosnpptl", 0)
+            + r.get("dmc_chi_reqif_op_writezero", 0)
+        )
+        dmc_chi_rdwr_ops = dmc_chi_rd_ops + dmc_chi_wr_ops
+        dmc_chi_rd_retries = r.get("dmc_chi_req_xmit_rd_retries", 0)
+        dmc_chi_wr_retries = r.get("dmc_chi_req_xmit_wr_retries", 0)
+        dmc_chi_transfer = r.get("dmc_chi_reqif_transfer", 0)
+
+        r["dmc_chi_reqif_rd_ops_total"] = dmc_chi_rd_ops
+        r["dmc_chi_reqif_wr_ops_total"] = dmc_chi_wr_ops
+        r["dmc_chi_reqif_rdwr_ops_total"] = dmc_chi_rdwr_ops
+        r["dmc_chi_rd_retry_pct"] = 100.0 * dmc_chi_rd_retries / dmc_chi_rd_ops if dmc_chi_rd_ops else 0.0
+        r["dmc_chi_wr_retry_pct"] = 100.0 * dmc_chi_wr_retries / dmc_chi_wr_ops if dmc_chi_wr_ops else 0.0
+        r["dmc_chi_retry_pct"] = 100.0 * (dmc_chi_rd_retries + dmc_chi_wr_retries) / dmc_chi_transfer if dmc_chi_transfer else 0.0
+        r["dmc_chi_rd_pct"] = 100.0 * dmc_chi_rd_ops / dmc_chi_transfer if dmc_chi_transfer else 0.0
+        r["dmc_chi_wr_pct"] = 100.0 * dmc_chi_wr_ops / dmc_chi_transfer if dmc_chi_transfer else 0.0
+        r["dmc_chi_rd_without_retry_pct"] = 100.0 * (dmc_chi_rd_ops - dmc_chi_rd_retries) / dmc_chi_rd_ops if dmc_chi_rd_ops else 0.0
+        r["dmc_chi_wr_without_retry_pct"] = 100.0 * (dmc_chi_wr_ops - dmc_chi_wr_retries) / dmc_chi_wr_ops if dmc_chi_wr_ops else 0.0
+        r["dmc_chi_rdwr_without_retry_pct"] = 100.0 * (dmc_chi_rdwr_ops - dmc_chi_rd_retries - dmc_chi_wr_retries) / dmc_chi_rdwr_ops if dmc_chi_rdwr_ops else 0.0
+
         cpu_fe_cycles = r.get("dmc_phx_cpu_fe_cycles", 0)
         cpu_fe_retry = r.get("dmc_phx_cpu_fe_retry", 0)
         remote_fe_cycles = r.get("dmc_phx_remote_fe_cycles", 0)
@@ -1262,6 +1345,32 @@ def write_summary(path, rows, bw_mem, benchmark_score, score_source, pass_scores
             dmc_summary_values[f"{key}_avg"] = avg_nonzero(summary_rows, key)
             dmc_summary_values[f"{key}_max"] = max_nonzero(summary_rows, key)
 
+    dmc_chi_summary_values = {}
+    for key in [
+        "dmc_chi_reqif_transfer",
+        "dmc_chi_req_xmit_rd_retries",
+        "dmc_chi_req_xmit_wr_retries",
+        "dmc_chi_reqif_op_writenosnpfull",
+        "dmc_chi_reqif_op_writenosnpfull_ptl_pcmosep",
+        "dmc_chi_reqif_op_writenosnpptl",
+        "dmc_chi_reqif_op_writezero",
+        "dmc_chi_reqif_op_readnosnpsep",
+        "dmc_chi_reqif_op_readnosnp",
+        "dmc_chi_reqif_rd_ops_total",
+        "dmc_chi_reqif_wr_ops_total",
+        "dmc_chi_reqif_rdwr_ops_total",
+        "dmc_chi_rd_retry_pct",
+        "dmc_chi_wr_retry_pct",
+        "dmc_chi_retry_pct",
+        "dmc_chi_rd_pct",
+        "dmc_chi_wr_pct",
+        "dmc_chi_rd_without_retry_pct",
+        "dmc_chi_wr_without_retry_pct",
+        "dmc_chi_rdwr_without_retry_pct",
+    ]:
+        dmc_chi_summary_values[f"{key}_avg"] = avg_nonzero(summary_rows, key)
+        dmc_chi_summary_values[f"{key}_max"] = max_nonzero(summary_rows, key)
+
     dmc_phx_cpu_fe_cycles_avg = avg_nonzero(summary_rows, "dmc_phx_cpu_fe_cycles")
     dmc_phx_cpu_fe_retry_avg = avg_nonzero(summary_rows, "dmc_phx_cpu_fe_retry")
     dmc_phx_remote_fe_cycles_avg = avg_nonzero(summary_rows, "dmc_phx_remote_fe_cycles")
@@ -1386,6 +1495,7 @@ def write_summary(path, rows, bw_mem, benchmark_score, score_source, pass_scores
         ["hns_sn_throttle_write_pct_max", f"{hns_throttle_write_pct_max:.6f}"],
 
         *[[k, f"{v:.9f}"] for k, v in sorted(dmc_summary_values.items()) if v != 0.0],
+        *[[k, f"{v:.9f}"] for k, v in sorted(dmc_chi_summary_values.items()) if v != 0.0],
 
         ["dmc_phx_cpu_fe_cycles_avg", f"{dmc_phx_cpu_fe_cycles_avg:.9f}"],
         ["dmc_phx_cpu_fe_retry_avg", f"{dmc_phx_cpu_fe_retry_avg:.9f}"],
@@ -1769,6 +1879,27 @@ def print_summary(outdir, ts, plot_path, plot_ok, summary):
         "dmc_phx_be_buffer_full_avg",
         "dmc_phx_be_queue_alloc_dealloc_avg",
     ])
+    dmc_chi_present = any(
+        float(summary.get(f"{k}_avg", 0.0)) != 0.0
+        for k in [
+            "dmc_chi_reqif_transfer",
+            "dmc_chi_reqif_rd_ops_total",
+            "dmc_chi_reqif_wr_ops_total",
+            "dmc_chi_req_xmit_rd_retries",
+            "dmc_chi_req_xmit_wr_retries",
+        ]
+    )
+    if dmc_chi_present:
+        print()
+        print("DMC CHI request mix")
+        print(f"  transfer        : {float(summary.get('dmc_chi_reqif_transfer_avg', 0.0)):.0f} avg / {float(summary.get('dmc_chi_reqif_transfer_max', 0.0)):.0f} max")
+        print(f"  read ops        : {float(summary.get('dmc_chi_reqif_rd_ops_total_avg', 0.0)):.0f} avg / {float(summary.get('dmc_chi_reqif_rd_ops_total_max', 0.0)):.0f} max")
+        print(f"  write ops       : {float(summary.get('dmc_chi_reqif_wr_ops_total_avg', 0.0)):.0f} avg / {float(summary.get('dmc_chi_reqif_wr_ops_total_max', 0.0)):.0f} max")
+        print(f"  rd retry        : {float(summary.get('dmc_chi_rd_retry_pct_avg', 0.0)):.3f}% avg / {float(summary.get('dmc_chi_rd_retry_pct_max', 0.0)):.3f}% max")
+        print(f"  wr retry        : {float(summary.get('dmc_chi_wr_retry_pct_avg', 0.0)):.3f}% avg / {float(summary.get('dmc_chi_wr_retry_pct_max', 0.0)):.3f}% max")
+        print(f"  total retry     : {float(summary.get('dmc_chi_retry_pct_avg', 0.0)):.3f}% avg / {float(summary.get('dmc_chi_retry_pct_max', 0.0)):.3f}% max")
+        print(f"  rd/wr mix       : {float(summary.get('dmc_chi_rd_pct_avg', 0.0)):.2f}% read / {float(summary.get('dmc_chi_wr_pct_avg', 0.0)):.2f}% write")
+
     if dmc_phx_present:
         print()
         print("DMC Phoenix")
@@ -1854,6 +1985,7 @@ def main():
     ap.add_argument("--dmc-remote-events", default="", help="comma-separated DMC perf events to add to REMOTE HNS pass")
     ap.add_argument("--dmc-slc-events", default="", help="comma-separated DMC perf events to add to SLC pass")
     ap.add_argument("--dmc-phx-all", action="store_true", help="add built-in DMC-Phoenix FE/BE events across all arm_cspmu_mc_0..47 ports/channels into CPU+LOCAL base pass")
+    ap.add_argument("--dmc-phx-chi-reqmix", action="store_true", help="add DMC-Phoenix CHI request mix/retry events to CPU+LOCAL base pass")
 
     ap.add_argument("--parse-only", default=None, help="existing run directory to reparse without running perf")
     ap.add_argument("--spec-root", default=None, help="SPEC root used to find result/ files for ratio= parsing")
@@ -1877,6 +2009,10 @@ def main():
         dmc_cpu_local_events += build_dmc_phx_all_events("dmc_phx_be_cmdq_almost_full", DMC_PHX_BE_CMDQ_ALMOST_FULL)
         dmc_cpu_local_events += build_dmc_phx_all_events("dmc_phx_be_controller_busy", DMC_PHX_BE_CONTROLLER_BUSY)
         dmc_cpu_local_events += build_dmc_phx_all_events("dmc_phx_be_port_busy", DMC_PHX_BE_PORT_BUSY)
+        dmc_cpu_local_events += build_dmc_phx_chi_req_events()
+
+    if args.dmc_phx_chi_reqmix and not args.dmc_phx_all:
+        dmc_cpu_local_events += build_dmc_phx_chi_req_events()
 
     if args.parse_only:
         spec_root = args.spec_root or infer_spec_root_from_cmd(args.cmd)
