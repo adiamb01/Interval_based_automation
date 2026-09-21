@@ -501,8 +501,8 @@ def dmc_phx_filtered_event_string(port, cfg):
         parts.append(f"filter={cfg['filter']}")
     if "filter2" in cfg:
         parts.append(f"filter2={cfg['filter2']}")
-    if "impdef" in cfg:
-        parts.append(f"impdef={cfg['impdef']}")
+    if "filter3" in cfg:
+        parts.append(f"filter3={cfg['filter3']}")
     return f"arm_cspmu_mc_{port}/" + ",".join(parts) + "/"
 
 
@@ -514,14 +514,14 @@ def dmc_phx_filtered_event_string(port, cfg):
 # Payload bit masks follow PMU_CMD_TYPE_PAYLOAD and PMU_RETRY_REASON_PAYLOAD.
 DMC_PHX_CHI_REQ_EVENTS = [
     ("dmc_chi_reqif_transfer", dict(event="0x40", filter="0x0")),
-    ("dmc_chi_req_xmit_rd_retries", dict(event="0x50", filter="0x0", filter2="0x4", impdef="0x4")),
-    ("dmc_chi_req_xmit_wr_retries", dict(event="0x50", filter="0x0", filter2="0x2", impdef="0x2")),
-    ("dmc_chi_reqif_op_writenosnpfull", dict(event="0x20", filter="0x0", filter2="0x8", impdef="0x8")),
-    ("dmc_chi_reqif_op_writenosnpfull_ptl_pcmosep", dict(event="0x20", filter="0x0", filter2="0x100", impdef="0x100")),
-    ("dmc_chi_reqif_op_writenosnpptl", dict(event="0x20", filter="0x0", filter2="0x4", impdef="0x4")),
-    ("dmc_chi_reqif_op_writezero", dict(event="0x20", filter="0x0", filter2="0x80", impdef="0x80")),
-    ("dmc_chi_reqif_op_readnosnpsep", dict(event="0x20", filter="0x0", filter2="0x2", impdef="0x2")),
-    ("dmc_chi_reqif_op_readnosnp", dict(event="0x20", filter="0x0", filter2="0x1", impdef="0x1")),
+    ("dmc_chi_req_xmit_rd_retries", dict(event="0x50", filter="0x0", filter2="0x4")),
+    ("dmc_chi_req_xmit_wr_retries", dict(event="0x50", filter="0x0", filter2="0x2")),
+    ("dmc_chi_reqif_op_writenosnpfull", dict(event="0x20", filter="0x0", filter2="0x8")),
+    ("dmc_chi_reqif_op_writenosnpfull_ptl_pcmosep", dict(event="0x20", filter="0x0", filter2="0x100")),
+    ("dmc_chi_reqif_op_writenosnpptl", dict(event="0x20", filter="0x0", filter2="0x4")),
+    ("dmc_chi_reqif_op_writezero", dict(event="0x20", filter="0x0", filter2="0x80")),
+    ("dmc_chi_reqif_op_readnosnpsep", dict(event="0x20", filter="0x0", filter2="0x2")),
+    ("dmc_chi_reqif_op_readnosnp", dict(event="0x20", filter="0x0", filter2="0x1")),
 ]
 
 
